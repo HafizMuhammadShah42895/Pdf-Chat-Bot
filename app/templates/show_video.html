@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <title>Generated Wav2Lip Video</title>
+</head>
+<body>
+    <h1>Your Generated Video</h1>
+    <video width="640" height="480" controls>
+        <source src="{{ video_url }}" type="video/mp4" />
+        Your browser does not support the video tag.
+    </video>
+    <br/><br/>
+    <a href="{{ video_url }}" download="{{ filename }}">Download Video</a>
+</body>
+</html>

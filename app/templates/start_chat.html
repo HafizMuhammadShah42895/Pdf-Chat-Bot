@@ -1,0 +1,889 @@
+
+
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <title>Chat with {{ chat.chat_name }}</title>
+  <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+
+  <!-- ✅ Added for Live Markdown Rendering -->
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script>
+    marked.setOptions({
+      breaks: true,
+      gfm: true
+    });
+  </script>
+
+  <style>
+    body {
+      background: #f8f9fa;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
+
+    .chat-box {
+      max-height: 500px;
+      overflow-y: auto;
+      background: #ffffff;
+      padding: 25px;
+      border-radius: 16px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+    }
+
+    .chat-message {
+      display: flex;
+      flex-direction: column;
+      margin-bottom: 20px;
+    }
+
+    .chat-message.user {
+      align-items: flex-end;
+    }
+
+    .chat-message.ai {
+      align-items: flex-start;
+    }
+
+    .chat-bubble {
+      max-width: 75%;
+      padding: 12px 18px;
+      border-radius: 20px;
+      line-height: 1.6;
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-size: 15px;
+    }
+
+    .user .chat-bubble {
+      background-color: #0d6efd;
+      color: #ffffff;
+      border-bottom-right-radius: 4px;
+    }
+
+    .ai .chat-bubble {
+      background-color: #e8f5e9;
+      color: #2e7d32;
+      border-bottom-left-radius: 4px;
+    }
+
+    .icon-btn {
+      background: none;
+      border: none;
+      padding: 6px 10px;
+      cursor: pointer;
+      font-size: 18px;
+      color: #495057;
+    }
+
+    .icon-btn:hover {
+      color: #0d6efd;
+    }
+
+    .icon-btn.danger:hover {
+      color: #dc3545;
+    }
+
+    .icon-btn.green:hover {
+      color: #28a745;
+    }
+
+    .mic-controls .icon-btn {
+      font-size: 22px;
+    }
+
+    #record-btn.recording {
+      color: red !important;
+    }
+
+    #stop-btn,
+    #cancel-btn {
+      display: none;
+    }
+
+    #question {
+      border-radius: 30px;
+      padding: 12px 20px;
+    }
+
+    .form-control:focus {
+      box-shadow: none;
+      border-color: #86b7fe;
+    }
+
+    .header {
+      text-align: center;
+      margin-bottom: 25px;
+    }
+
+    .header h2 {
+      color: #0d6efd;
+    }
+
+    .tts-buttons,
+    .wav2lip-buttons {
+      margin-top: 6px;
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .video-container {
+      margin-top: 10px;
+      max-width: 75%;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="container py-5">
+    <div class="header">
+      <h2>🧠 Chat with: {{ chat.chat_name }}</h2>
+      <div>
+        <button id="stop-tts-btn" class="icon-btn danger" style="display: none;">
+          <i class="fas fa-stop-circle fa-lg"></i>
+        </button>
+      </div>
+    </div>
+
+    <div id="chat-box" class="chat-box mb-4">
+      {% for entry in chat_history %}
+      <div class="chat-message user">
+        <div class="chat-bubble">{{ entry.question }}</div>
+      </div>
+
+      <div class="chat-message ai" data-entry-id="{{ entry.id }}">
+        <!-- ✅ Render stored Markdown as HTML -->
+        <div class="chat-bubble">{{ entry.answer|safe }}</div>
+
+        <div class="tts-buttons">
+          <button class="icon-btn green tts-btn" data-text="{{ entry.answer|striptags|escape }}" data-id="msg-{{ loop.index }}">
+            <i class="fas fa-volume-up"></i>
+          </button>
+          <button class="icon-btn danger stop-tts-btn" style="display: none;" data-id="msg-{{ loop.index }}">
+            <i class="fas fa-stop-circle"></i>
+          </button>
+        </div>
+
+        <!-- Wav2Lip button -->
+        <div class="wav2lip-buttons">
+          <button class="icon-btn blue wav2lip-btn" data-text="{{ entry.answer|striptags|escape }}">
+            <i class="fas fa-video"></i> Wav2Lip
+          </button>
+          <span class="wav2lip-status" style="margin-left:10px;color:#555;"></span>
+        </div>
+
+        <!-- Container to show the generated video -->
+        <div class="video-container"></div>
+      </div>
+      {% endfor %}
+    </div>
+
+    <form id="question-form" class="d-flex align-items-center gap-2">
+      <input type="text" name="question" id="question" class="form-control mr-2" placeholder="Ask something..." required>
+
+      <div class="mic-controls d-flex align-items-center gap-2">
+        <button type="button" id="record-btn" class="icon-btn" title="Start Recording">
+          <i class="fas fa-microphone"></i>
+        </button>
+        <button type="button" id="stop-btn" class="icon-btn green" title="Stop Recording">
+          <i class="fas fa-square"></i>
+        </button>
+        <button type="button" id="cancel-btn" class="icon-btn danger" title="Cancel Recording">
+          <i class="fas fa-times-circle"></i>
+        </button>
+      </div>
+
+      <button type="submit" class="icon-btn" title="Send">
+        <i class="fas fa-paper-plane text-primary"></i>
+      </button>
+
+      <a href="{{ url_for('chat.view_chats') }}" class="icon-btn" title="Back">
+        <i class="fas fa-arrow-left text-secondary"></i>
+      </a>
+    </form>
+  </div>
+
+  <script>
+    const form = document.getElementById("question-form");
+    const questionInput = document.getElementById("question");
+    const chatBox = document.getElementById("chat-box");
+    const askButton = form.querySelector("button[type='submit']");
+
+    const recordBtn = document.getElementById("record-btn");
+    const stopBtn = document.getElementById("stop-btn");
+    const cancelBtn = document.getElementById("cancel-btn");
+
+    let mediaRecorder;
+    let recordedChunks = [];
+
+    function scrollToBottom() {
+      chatBox.scrollTop = chatBox.scrollHeight;
+    }
+
+    form.addEventListener("submit", async function (e) {
+      e.preventDefault();
+
+      const question = questionInput.value.trim();
+      if (!question) return;
+
+      questionInput.value = "";
+      questionInput.focus();
+
+      askButton.disabled = true;
+
+      const userDiv = document.createElement("div");
+      userDiv.className = "chat-message user";
+      userDiv.innerHTML = `<div class="chat-bubble">${question}</div>`;
+      chatBox.appendChild(userDiv);
+
+      const aiDiv = document.createElement("div");
+      aiDiv.className = "chat-message ai";
+      const bubble = document.createElement("div");
+      bubble.className = "chat-bubble";
+      bubble.innerHTML = "🤖 ";
+      aiDiv.appendChild(bubble);
+      chatBox.appendChild(aiDiv);
+      scrollToBottom();
+
+      try {
+        const response = await fetch("{{ url_for('chat.stream_chat', chat_id=chat.id) }}", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ question: question })
+        });
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder("utf-8");
+        let mdBuffer = "";
+
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          const chunk = decoder.decode(value, { stream: true });
+          mdBuffer += chunk;
+          bubble.innerHTML = marked.parse(mdBuffer); // ✅ Live Markdown rendering
+          scrollToBottom();
+        }
+      } catch (err) {
+        bubble.innerHTML += `<br><span class="text-danger">❌ Error: ${err}</span>`;
+      }
+
+      askButton.disabled = false;
+    });
+
+    recordBtn.addEventListener("click", async () => {
+      recordedChunks = [];
+
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        mediaRecorder = new MediaRecorder(stream);
+
+        mediaRecorder.ondataavailable = (e) => {
+          if (e.data.size > 0) recordedChunks.push(e.data);
+        };
+
+        mediaRecorder.onstop = async () => {
+          const blob = new Blob(recordedChunks, { type: 'audio/webm' });
+          const formData = new FormData();
+          formData.append("audio", blob);
+
+          const response = await fetch("/transcribe", {
+            method: "POST",
+            body: formData
+          });
+
+          const result = await response.json();
+          questionInput.value = result.text || "⚠️ No speech detected.";
+        };
+
+        mediaRecorder.start();
+        recordBtn.classList.add("recording");
+        stopBtn.style.display = "inline-block";
+        cancelBtn.style.display = "inline-block";
+        recordBtn.disabled = true;
+      } catch (err) {
+        alert("🎤 Microphone access denied.");
+        console.error(err);
+      }
+    });
+
+    stopBtn.addEventListener("click", () => {
+      mediaRecorder.stop();
+      recordBtn.classList.remove("recording");
+      recordBtn.disabled = false;
+      stopBtn.style.display = "none";
+      cancelBtn.style.display = "none";
+    });
+
+    cancelBtn.addEventListener("click", () => {
+      mediaRecorder.stop();
+      recordedChunks = [];
+      questionInput.value = "";
+      recordBtn.classList.remove("recording");
+      recordBtn.disabled = false;
+      stopBtn.style.display = "none";
+      cancelBtn.style.display = "none";
+    });
+
+    let currentUtterance = null;
+    let currentId = null;
+
+    document.querySelectorAll('.tts-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const text = btn.getAttribute('data-text');
+        const id = btn.getAttribute('data-id');
+
+        if (currentUtterance) {
+          speechSynthesis.cancel();
+          document.querySelectorAll('.stop-tts-btn').forEach(b => b.style.display = 'none');
+        }
+
+        const utterance = new SpeechSynthesisUtterance(text);
+        currentUtterance = utterance;
+        currentId = id;
+
+        const stopBtnEl = document.querySelector(`.stop-tts-btn[data-id="${id}"]`);
+        stopBtnEl.style.display = 'inline-block';
+
+        utterance.onend = () => {
+          stopBtnEl.style.display = 'none';
+          currentUtterance = null;
+          currentId = null;
+        };
+
+        speechSynthesis.speak(utterance);
+      });
+    });
+
+    document.querySelectorAll('.stop-tts-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        if (currentUtterance && currentId === btn.getAttribute('data-id')) {
+          speechSynthesis.cancel();
+          btn.style.display = 'none';
+          currentUtterance = null;
+          currentId = null;
+        }
+      });
+    });
+
+
+
+
+
+
+
+
+
+    document.querySelectorAll('.wav2lip-btn').forEach(btn => {
+  btn.addEventListener('click', async () => {
+    const aiMessageDiv = btn.closest('.chat-message.ai');
+    const videoContainer = aiMessageDiv.querySelector('.video-container');
+    const statusSpan = aiMessageDiv.querySelector('.wav2lip-status');
+    const text = btn.getAttribute('data-text');
+
+    videoContainer.innerHTML = "";
+    statusSpan.textContent = "Generating audio and video... 🎥";
+
+    try {
+      const formData = new FormData();
+      formData.append('text', text);
+
+      const response = await fetch("{{ url_for('chat.wav2lip') }}", {
+        method: "POST",
+        body: formData
+      });
+
+      if (!response.ok) throw new Error("Wav2Lip generation failed");
+
+      const data = await response.json();
+
+      if (data.video_url) {
+        videoContainer.innerHTML = `
+          <video controls autoplay loop muted style="width:100%;border-radius:12px;">
+            <source src="${data.video_url}" type="video/mp4">
+            Your browser does not support the video tag.
+          </video>
+        `;
+        statusSpan.textContent = "Video generated!";
+      } else {
+        statusSpan.textContent = "No video URL returned.";
+      }
+
+    } catch (error) {
+      statusSpan.textContent = `Error: ${error.message}`;
+    }
+  });
+});
+
+
+    // ======== Wav2Lip button logic ========
+//     document.querySelectorAll('.wav2lip-btn').forEach(btn => {
+//   btn.addEventListener('click', async () => {
+//     const aiMessageDiv = btn.closest('.chat-message.ai');
+//     const videoContainer = aiMessageDiv.querySelector('.video-container');
+//     const statusSpan = aiMessageDiv.querySelector('.wav2lip-status');
+//     const text = btn.getAttribute('data-text');
+
+//     videoContainer.innerHTML = "";
+//     statusSpan.textContent = "Generating audio and video... 🎥";
+
+//     // Use SpeechSynthesis to generate speech and capture it — 
+//     // (or use your existing recording method if you have it ready)
+//     // Here is a rough example for capturing audio from TTS using MediaRecorder:
+//     try {
+//       // Start speech synthesis
+//       const utterance = new SpeechSynthesisUtterance(text);
+//       const audioChunks = [];
+//       const mediaStreamDest = new MediaStreamAudioDestinationNode(new AudioContext());
+//       const mediaRecorder = new MediaRecorder(mediaStreamDest.stream);
+
+//       // This part is complex in-browser. A simpler approach:
+//       // Instead of capturing speech from TTS in browser, you can generate audio on backend.
+//       // So better to send the text to backend and generate audio + video there.
+
+//       // For now, send text only and backend generates audio (recommended):
+//       const formData = new FormData();
+//       formData.append('text', text);
+
+//       const response = await fetch("{{ url_for('chat.wav2lip') }}", {
+//         method: "POST",
+//         body: formData
+//       });
+
+//       if (!response.ok) throw new Error("Wav2Lip generation failed");
+
+//       const data = await response.json();
+
+//       if (data.video_url) {
+//         videoContainer.innerHTML = `
+//           <video controls autoplay loop muted style="width:100%;border-radius:12px;">
+//             <source src="${data.video_url}" type="video/mp4">
+//             Your browser does not support the video tag.
+//           </video>
+//         `;
+//         statusSpan.textContent = "Video generated!";
+//       } else {
+//         statusSpan.textContent = "No video URL returned.";
+//       }
+
+//     } catch (error) {
+//       statusSpan.textContent = `Error: ${error.message}`;
+//     }
+//   });
+// });
+
+  </script>
+</body>
+</html>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<!-- 
+
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <title>Chat with {{ chat.chat_name }}</title>
+  <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+
+
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script>
+    marked.setOptions({
+      breaks: true,
+      gfm: true
+    });
+  </script>
+
+  <style>
+    body {
+      background: #f8f9fa;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
+
+    .chat-box {
+      max-height: 500px;
+      overflow-y: auto;
+      background: #ffffff;
+      padding: 25px;
+      border-radius: 16px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+    }
+
+    .chat-message {
+      display: flex;
+      margin-bottom: 20px;
+    }
+
+    .chat-message.user {
+      justify-content: flex-end;
+    }
+
+    .chat-message.ai {
+      justify-content: flex-start;
+    }
+
+    .chat-bubble {
+      max-width: 75%;
+      padding: 12px 18px;
+      border-radius: 20px;
+      line-height: 1.6;
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-size: 15px;
+    }
+
+    .user .chat-bubble {
+      background-color: #0d6efd;
+      color: #ffffff;
+      border-bottom-right-radius: 4px;
+    }
+
+    .ai .chat-bubble {
+      background-color: #e8f5e9;
+      color: #2e7d32;
+      border-bottom-left-radius: 4px;
+    }
+
+    .icon-btn {
+      background: none;
+      border: none;
+      padding: 6px 10px;
+      cursor: pointer;
+      font-size: 18px;
+      color: #495057;
+    }
+
+    .icon-btn:hover {
+      color: #0d6efd;
+    }
+
+    .icon-btn.danger:hover {
+      color: #dc3545;
+    }
+
+    .icon-btn.green:hover {
+      color: #28a745;
+    }
+
+    .mic-controls .icon-btn {
+      font-size: 22px;
+    }
+
+    #record-btn.recording {
+      color: red !important;
+    }
+
+    #stop-btn,
+    #cancel-btn {
+      display: none;
+    }
+
+    #question {
+      border-radius: 30px;
+      padding: 12px 20px;
+    }
+
+    .form-control:focus {
+      box-shadow: none;
+      border-color: #86b7fe;
+    }
+
+    .header {
+      text-align: center;
+      margin-bottom: 25px;
+    }
+
+    .header h2 {
+      color: #0d6efd;
+    }
+
+    .tts-buttons {
+      margin-top: 6px;
+      display: flex;
+      gap: 10px;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="container py-5">
+    <div class="header">
+      <h2>🧠 Chat with: {{ chat.chat_name }}</h2>
+      <div>
+        <button id="stop-tts-btn" class="icon-btn danger" style="display: none;">
+          <i class="fas fa-stop-circle fa-lg"></i>
+        </button>
+      </div>
+    </div>
+
+    <div id="chat-box" class="chat-box mb-4">
+      {% for entry in chat_history %}
+      <div class="chat-message user">
+        <div class="chat-bubble">{{ entry.question }}</div>
+      </div>
+
+      <div class="chat-message ai">
+    
+        <div class="chat-bubble">{{ entry.answer|safe }}</div>
+        <div class="tts-buttons">
+          <button class="icon-btn green tts-btn" data-text="{{ entry.answer|striptags|escape }}"
+            data-id="msg-{{ loop.index }}">
+            <i class="fas fa-volume-up"></i>
+          </button>
+          <button class="icon-btn danger stop-tts-btn" style="display: none;" data-id="msg-{{ loop.index }}">
+            <i class="fas fa-stop-circle"></i>
+          </button>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+
+    <form id="question-form" class="d-flex align-items-center gap-2">
+      <input type="text" name="question" id="question" class="form-control mr-2" placeholder="Ask something..." required>
+
+      <div class="mic-controls d-flex align-items-center gap-2">
+        <button type="button" id="record-btn" class="icon-btn" title="Start Recording">
+          <i class="fas fa-microphone"></i>
+        </button>
+        <button type="button" id="stop-btn" class="icon-btn green" title="Stop Recording">
+          <i class="fas fa-square"></i>
+        </button>
+        <button type="button" id="cancel-btn" class="icon-btn danger" title="Cancel Recording">
+          <i class="fas fa-times-circle"></i>
+        </button>
+      </div>
+
+      <button type="submit" class="icon-btn" title="Send">
+        <i class="fas fa-paper-plane text-primary"></i>
+      </button>
+
+      <a href="{{ url_for('chat.view_chats') }}" class="icon-btn" title="Back">
+        <i class="fas fa-arrow-left text-secondary"></i>
+      </a>
+    </form>
+  </div>
+
+  <script>
+    const form = document.getElementById("question-form");
+    const questionInput = document.getElementById("question");
+    const chatBox = document.getElementById("chat-box");
+    const askButton = form.querySelector("button[type='submit']");
+
+    const recordBtn = document.getElementById("record-btn");
+    const stopBtn = document.getElementById("stop-btn");
+    const cancelBtn = document.getElementById("cancel-btn");
+
+    let mediaRecorder;
+    let recordedChunks = [];
+
+    function scrollToBottom() {
+      chatBox.scrollTop = chatBox.scrollHeight;
+    }
+
+    form.addEventListener("submit", async function (e) {
+      e.preventDefault();
+
+      const question = questionInput.value.trim();
+      if (!question) return;
+
+      questionInput.value = "";
+      questionInput.focus();
+
+      askButton.disabled = true;
+
+      const userDiv = document.createElement("div");
+      userDiv.className = "chat-message user";
+      userDiv.innerHTML = `<div class="chat-bubble">${question}</div>`;
+      chatBox.appendChild(userDiv);
+
+      const aiDiv = document.createElement("div");
+      aiDiv.className = "chat-message ai";
+      const bubble = document.createElement("div");
+      bubble.className = "chat-bubble";
+      bubble.innerHTML = "🤖 ";
+      aiDiv.appendChild(bubble);
+      chatBox.appendChild(aiDiv);
+      scrollToBottom();
+
+      try {
+        const response = await fetch("{{ url_for('chat.stream_chat', chat_id=chat.id) }}", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ question: question })
+        });
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder("utf-8");
+        let mdBuffer = "";
+
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          const chunk = decoder.decode(value, { stream: true });
+          mdBuffer += chunk;
+          bubble.innerHTML = marked.parse(mdBuffer); // ✅ Live Markdown rendering
+          scrollToBottom();
+        }
+      } catch (err) {
+        bubble.innerHTML += `<br><span class="text-danger">❌ Error: ${err}</span>`;
+      }
+
+      askButton.disabled = false;
+    });
+
+    recordBtn.addEventListener("click", async () => {
+      recordedChunks = [];
+
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        mediaRecorder = new MediaRecorder(stream);
+
+        mediaRecorder.ondataavailable = (e) => {
+          if (e.data.size > 0) recordedChunks.push(e.data);
+        };
+
+        mediaRecorder.onstop = async () => {
+          const blob = new Blob(recordedChunks, { type: 'audio/webm' });
+          const formData = new FormData();
+          formData.append("audio", blob);
+
+          const response = await fetch("/transcribe", {
+            method: "POST",
+            body: formData
+          });
+
+          const result = await response.json();
+          questionInput.value = result.text || "⚠️ No speech detected.";
+        };
+
+        mediaRecorder.start();
+        recordBtn.classList.add("recording");
+        stopBtn.style.display = "inline-block";
+        cancelBtn.style.display = "inline-block";
+        recordBtn.disabled = true;
+      } catch (err) {
+        alert("🎤 Microphone access denied.");
+        console.error(err);
+      }
+    });
+
+    stopBtn.addEventListener("click", () => {
+      mediaRecorder.stop();
+      recordBtn.classList.remove("recording");
+      recordBtn.disabled = false;
+      stopBtn.style.display = "none";
+      cancelBtn.style.display = "none";
+    });
+
+    cancelBtn.addEventListener("click", () => {
+      mediaRecorder.stop();
+      recordedChunks = [];
+      questionInput.value = "";
+      recordBtn.classList.remove("recording");
+      recordBtn.disabled = false;
+      stopBtn.style.display = "none";
+      cancelBtn.style.display = "none";
+    });
+
+    let currentUtterance = null;
+    let currentId = null;
+
+    document.querySelectorAll('.tts-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const text = btn.getAttribute('data-text');
+        const id = btn.getAttribute('data-id');
+
+        if (currentUtterance) {
+          speechSynthesis.cancel();
+          document.querySelectorAll('.stop-tts-btn').forEach(b => b.style.display = 'none');
+        }
+
+        const utterance = new SpeechSynthesisUtterance(text);
+        currentUtterance = utterance;
+        currentId = id;
+
+        const stopBtnEl = document.querySelector(`.stop-tts-btn[data-id="${id}"]`);
+        stopBtnEl.style.display = 'inline-block';
+
+        utterance.onend = () => {
+          stopBtnEl.style.display = 'none';
+          currentUtterance = null;
+          currentId = null;
+        };
+
+        speechSynthesis.speak(utterance);
+      });
+    });
+
+    document.querySelectorAll('.stop-tts-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        if (currentUtterance && currentId === btn.getAttribute('data-id')) {
+          speechSynthesis.cancel();
+          btn.style.display = 'none';
+          currentUtterance = null;
+          currentId = null;
+        }
+      });
+    });
+  </script>
+</body>
+</html> -->
